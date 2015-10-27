@@ -502,6 +502,8 @@ class Sampler:
         self.cancelled = 0
         self.unused = 0
         self.used = 0
+        self.all_points = 0
+        self.outer_points = 0
 
     def cancel_queue(self):
         while self.queue:
@@ -592,6 +594,9 @@ class SingleEllipsoidSampler(Sampler):
         self.ell = bounding_ellipsoid(self.points, pointvol=pointvol,
                                       minvol=True)
         self.ell.scale_to_vol(self.ell.vol * self.enlarge)
+        self.inner_ell = bounding_ellipsoid(self.points, pointvol=pointvol,
+                                      minvol=True)
+        self.inner_ell.scale_to_vol(self.inner_ell.vol * np.sqrt(self.enlarge))
         self.fill_queue()
 
     def suggest_point(self):
@@ -607,7 +612,9 @@ class SingleEllipsoidSampler(Sampler):
         while logl < loglstar:
             u, v, logl = self.get_point_value()
             ncall += 1
-
+        if not self.inner_ell.contains(u):
+            self.outer_points += 1
+        self.all_points += 1
         return u, v, logl, ncall
 
 
@@ -905,6 +912,7 @@ def sample(loglikelihood, prior_transform, ndim, npoints=100,
     ndecl = 0
     logwt_old = -np.inf
     it = 0
+    ncall_history = []
     while it < maxiter:
         if callback is not None:
             callback_info.update(it=it, logz=logz)
@@ -946,6 +954,7 @@ def sample(loglikelihood, prior_transform, ndim, npoints=100,
         active_v[worst] = v
         active_logl[worst] = logl
         ncall += nc
+        ncall_history.append(nc)
 
         # Shrink interval
         logvol -= 1.0 / npoints
@@ -1013,4 +1022,7 @@ def sample(loglikelihood, prior_transform, ndim, npoints=100,
         ('q_cancelled', sampler.cancelled),
         ('q_unused', sampler.unused),
         ('q_used', sampler.used),
+        ('ncall_history',ncall_history),
+        ('all_points',sampler.all_points),
+        ('outer_points',sampler.outer_points),
         ])
